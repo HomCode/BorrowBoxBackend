@@ -31,21 +31,18 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
         AuthResponse response = new AuthResponse();
 
-        // Validate passwords match
         if (!request.getPassword().equals(request.getConfirmPassword())) {
             response.setSuccess(false);
             response.setMessage("Passwords do not match");
             return response;
         }
 
-        // Check if user exists
         if (userRepository.existsByUsername(request.getUsername())) {
             response.setSuccess(false);
             response.setMessage("Username already exists");
             return response;
         }
 
-        // Validate role-specific fields
         if ("student".equals(request.getRole())) {
             if (request.getStudentId() == null || request.getStudentId().isEmpty()) {
                 response.setSuccess(false);
@@ -68,15 +65,12 @@ public class AuthService {
             System.out.println("=== REGISTRATION ATTEMPT ===");
             System.out.println("Username: " + request.getUsername());
 
-            // Register with Supabase
             Map<String, Object> supabaseUser = supabaseAuthService.signUp(request);
             System.out.println("✅ Supabase registration successful. User ID: " + supabaseUser.get("id"));
 
-            // Create local user
             User user = new User();
             user.setUsername(request.getUsername());
 
-            // Hash password with jBCrypt
             String hashedPassword = BCrypt.hashpw(request.getPassword(), BCrypt.gensalt());
             user.setPassword(hashedPassword);
             System.out.println("Password hashed for local storage");
@@ -95,10 +89,8 @@ public class AuthService {
             User savedUser = userRepository.save(user);
             System.out.println("✅ User saved to local database with ID: " + savedUser.getId());
 
-            // Generate token
             String token = jwtUtils.generateToken(savedUser);
 
-            // Create response
             response.setSuccess(true);
             response.setToken(token);
             response.setMessage("Registration successful");
@@ -109,7 +101,8 @@ public class AuthService {
                     savedUser.getFullName(),
                     savedUser.getRole(),
                     savedUser.getStudentId(),
-                    savedUser.getOrgId()
+                    savedUser.getOrgId(),
+                    savedUser.getProfilePhoto() != null
             );
             response.setUser(userData);
 
@@ -132,7 +125,6 @@ public class AuthService {
         System.out.println("Password: " + request.getPassword());
 
         try {
-            // First, try to authenticate with Supabase
             System.out.println("Attempting Supabase authentication...");
             Map<String, Object> supabaseResponse = supabaseAuthService.signIn(
                     request.getUsername(),
@@ -141,12 +133,10 @@ public class AuthService {
             System.out.println("✅ Supabase authentication successful!");
             System.out.println("Access token received: " + supabaseResponse.get("access_token"));
 
-            // Get user info from Supabase response
             Map<String, Object> supabaseUser = (Map<String, Object>) supabaseResponse.get("user");
             String supabaseUserId = (String) supabaseUser.get("id");
             System.out.println("Supabase User ID: " + supabaseUserId);
 
-            // Find or create user in local database
             Optional<User> existingUser = userRepository.findByUsername(request.getUsername());
             User user;
 
@@ -154,7 +144,6 @@ public class AuthService {
                 user = existingUser.get();
                 System.out.println("✅ User found in local database with role: " + user.getRole());
 
-                // Update Supabase ID if not set
                 if (user.getSupabaseId() == null) {
                     user.setSupabaseId(supabaseUserId);
                     user = userRepository.save(user);
@@ -163,14 +152,10 @@ public class AuthService {
             } else {
                 System.out.println("⚠️ User not found in local database. Creating from Supabase data...");
 
-                // Create new user from Supabase data
                 user = new User();
                 user.setUsername(request.getUsername());
-
-                // We don't need to store the actual password since Supabase handles auth
                 user.setPassword("SUPABASE_MANAGED");
 
-                // Get user metadata if available
                 Map<String, Object> userMetadata = (Map<String, Object>) supabaseUser.get("user_metadata");
                 if (userMetadata != null) {
                     user.setFullName((String) userMetadata.getOrDefault("fullName", request.getUsername()));
@@ -182,7 +167,6 @@ public class AuthService {
                         user.setOrgId((String) userMetadata.get("orgId"));
                     }
                 } else {
-                    // Default values
                     user.setFullName(request.getUsername());
                     user.setRole("student");
                 }
@@ -192,11 +176,9 @@ public class AuthService {
                 System.out.println("✅ New user created in local database with ID: " + user.getId());
             }
 
-            // Generate JWT token for your app
             String token = jwtUtils.generateToken(user);
             System.out.println("✅ JWT token generated");
 
-            // Create response
             response.setSuccess(true);
             response.setToken(token);
             response.setMessage("Login successful");
@@ -207,7 +189,8 @@ public class AuthService {
                     user.getFullName(),
                     user.getRole(),
                     user.getStudentId(),
-                    user.getOrgId()
+                    user.getOrgId(),
+                    user.getProfilePhoto() != null
             );
             response.setUser(userData);
 
@@ -217,8 +200,6 @@ public class AuthService {
             System.err.println("❌ Login failed: " + e.getMessage());
             e.printStackTrace();
 
-            // Optional: Fall back to local authentication if Supabase fails
-            // You can remove this if you want to rely only on Supabase
             System.out.println("Attempting fallback to local authentication...");
 
             User user = userRepository.findByUsername(request.getUsername()).orElse(null);
@@ -238,7 +219,8 @@ public class AuthService {
                         user.getFullName(),
                         user.getRole(),
                         user.getStudentId(),
-                        user.getOrgId()
+                        user.getOrgId(),
+                        user.getProfilePhoto() != null
                 );
                 response.setUser(userData);
 

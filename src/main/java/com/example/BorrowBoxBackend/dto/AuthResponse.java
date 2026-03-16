@@ -15,7 +15,6 @@ public class AuthResponse {
         this.message = message;
     }
 
-    // Getters and Setters
     public boolean isSuccess() { return success; }
     public void setSuccess(boolean success) { this.success = success; }
 
@@ -35,6 +34,7 @@ public class AuthResponse {
         private String role;
         private String studentId;
         private String orgId;
+        private boolean hasPhoto;
 
         public UserData() {}
 
@@ -46,9 +46,20 @@ public class AuthResponse {
             this.role = role;
             this.studentId = studentId;
             this.orgId = orgId;
+            this.hasPhoto = false;
         }
 
-        // Getters and Setters
+        public UserData(String id, String username, String fullName, String role,
+                        String studentId, String orgId, boolean hasPhoto) {
+            this.id = id;
+            this.username = username;
+            this.fullName = fullName;
+            this.role = role;
+            this.studentId = studentId;
+            this.orgId = orgId;
+            this.hasPhoto = hasPhoto;
+        }
+
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
 
@@ -66,5 +77,8 @@ public class AuthResponse {
 
         public String getOrgId() { return orgId; }
         public void setOrgId(String orgId) { this.orgId = orgId; }
+
+        public boolean isHasPhoto() { return hasPhoto; }
+        public void setHasPhoto(boolean hasPhoto) { this.hasPhoto = hasPhoto; }
     }
 }
