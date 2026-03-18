@@ -13,8 +13,8 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    @Column(unique = true, nullable = false)
-    private String username;
+    @Column(name = "username", unique = true, nullable = false)
+    private String email;
 
     @Column(nullable = false)
     private String password;
@@ -22,8 +22,9 @@ public class User {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String role;
+    private Role role;
 
     @Column(name = "student_id")
     private String studentId;
@@ -52,33 +53,109 @@ public class User {
 
     public User() {}
 
-    public String getId() { return id; }
-    public String getUsername() { return username; }
-    public String getPassword() { return password; }
-    public String getFullName() { return fullName; }
-    public String getRole() { return role; }
-    public String getStudentId() { return studentId; }
-    public String getOrgId() { return orgId; }
-    public String getSupabaseId() { return supabaseId; }
-    public byte[] getProfilePhoto() { return profilePhoto; }
-    public String getPhotoContentType() { return photoContentType; }
-    public LocalDateTime getPhotoUpdatedAt() { return photoUpdatedAt; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public String getId() {
+        return id;
+    }
 
-    public void setId(String id) { this.id = id; }
-    public void setUsername(String username) { this.username = username; }
-    public void setPassword(String password) { this.password = password; }
-    public void setFullName(String fullName) { this.fullName = fullName; }
-    public void setRole(String role) { this.role = role; }
-    public void setStudentId(String studentId) { this.studentId = studentId; }
-    public void setOrgId(String orgId) { this.orgId = orgId; }
-    public void setSupabaseId(String supabaseId) { this.supabaseId = supabaseId; }
-    public void setProfilePhoto(byte[] profilePhoto) { this.profilePhoto = profilePhoto; }
-    public void setPhotoContentType(String photoContentType) { this.photoContentType = photoContentType; }
-    public void setPhotoUpdatedAt(LocalDateTime photoUpdatedAt) { this.photoUpdatedAt = photoUpdatedAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public String getEmail() {
+        return email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public Role getRole() {
+        return role;
+    }
+
+    public String getStudentId() {
+        return studentId;
+    }
+
+    public String getOrgId() {
+        return orgId;
+    }
+
+    public String getSupabaseId() {
+        return supabaseId;
+    }
+
+    public byte[] getProfilePhoto() {
+        return profilePhoto;
+    }
+
+    public String getPhotoContentType() {
+        return photoContentType;
+    }
+
+    public LocalDateTime getPhotoUpdatedAt() {
+        return photoUpdatedAt;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public void setRole(Role role) {
+        this.role = role;
+    }
+
+    public void setStudentId(String studentId) {
+        this.studentId = studentId;
+    }
+
+    public void setOrgId(String orgId) {
+        this.orgId = orgId;
+    }
+
+    public void setSupabaseId(String supabaseId) {
+        this.supabaseId = supabaseId;
+    }
+
+    public void setProfilePhoto(byte[] profilePhoto) {
+        this.profilePhoto = profilePhoto;
+    }
+
+    public void setPhotoContentType(String photoContentType) {
+        this.photoContentType = photoContentType;
+    }
+
+    public void setPhotoUpdatedAt(LocalDateTime photoUpdatedAt) {
+        this.photoUpdatedAt = photoUpdatedAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
 
     @PrePersist
     protected void onCreate() {

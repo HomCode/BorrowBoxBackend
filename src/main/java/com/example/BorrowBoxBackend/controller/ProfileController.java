@@ -3,6 +3,7 @@ package com.example.BorrowBoxBackend.controller;
 import com.example.BorrowBoxBackend.dto.AuthResponse;
 import com.example.BorrowBoxBackend.dto.request.UpdatePasswordRequest;
 import com.example.BorrowBoxBackend.dto.request.UpdateProfileRequest;
+import com.example.BorrowBoxBackend.model.Role;
 import com.example.BorrowBoxBackend.model.User;
 import com.example.BorrowBoxBackend.repository.UserRepository;
 import com.example.BorrowBoxBackend.security.JwtUtils;
@@ -31,21 +32,15 @@ public class ProfileController {
         this.supabaseAuthService = supabaseAuthService;
     }
 
-    /**
-     * Helper method to extract user from JWT token
-     */
     private User getUserFromToken(String token) {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
         }
 
-        String username = jwtUtils.getUsernameFromToken(token);
-        return userRepository.findByUsername(username).orElse(null);
+        String email = jwtUtils.getUsernameFromToken(token);
+        return userRepository.findByEmail(email).orElse(null);
     }
 
-    /**
-     * 3. Profile API - Get user profile
-     */
     @GetMapping
     public ResponseEntity<AuthResponse> getProfile(@RequestHeader("Authorization") String token) {
         AuthResponse response = new AuthResponse();
@@ -61,9 +56,9 @@ public class ProfileController {
 
             AuthResponse.UserData userData = new AuthResponse.UserData(
                     user.getId(),
-                    user.getUsername(),
+                    user.getEmail(),
                     user.getFullName(),
-                    user.getRole(),
+                    user.getRole().name().toLowerCase(),
                     user.getStudentId(),
                     user.getOrgId(),
                     user.getProfilePhoto() != null
@@ -76,20 +71,17 @@ public class ProfileController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Error retrieving profile: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
-    /**
-     * 4. Edit Profile API - Update user profile
-     */
     @PutMapping
     public ResponseEntity<AuthResponse> updateProfile(
             @RequestHeader("Authorization") String token,
             @RequestBody UpdateProfileRequest request) {
+
         AuthResponse response = new AuthResponse();
 
         try {
@@ -105,19 +97,26 @@ public class ProfileController {
                 user.setFullName(request.getFullName());
             }
 
-            if ("student".equals(user.getRole()) && request.getStudentId() != null) {
+            if (user.getRole() == Role.STUDENT && request.getStudentId() != null) {
                 user.setStudentId(request.getStudentId());
-            } else if ("officer".equals(user.getRole()) && request.getOrgId() != null) {
+            } else if (user.getRole() == Role.OFFICER && request.getOrgId() != null) {
                 user.setOrgId(request.getOrgId());
             }
 
             User updatedUser = userRepository.save(user);
 
+            if (updatedUser.getSupabaseId() != null && !updatedUser.getSupabaseId().isBlank()) {
+                supabaseAuthService.updateUserProfile(
+                        updatedUser.getSupabaseId(),
+                        updatedUser.getFullName()
+                );
+            }
+
             AuthResponse.UserData userData = new AuthResponse.UserData(
                     updatedUser.getId(),
-                    updatedUser.getUsername(),
+                    updatedUser.getEmail(),
                     updatedUser.getFullName(),
-                    updatedUser.getRole(),
+                    updatedUser.getRole().name().toLowerCase(),
                     updatedUser.getStudentId(),
                     updatedUser.getOrgId(),
                     updatedUser.getProfilePhoto() != null
@@ -130,20 +129,17 @@ public class ProfileController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Error updating profile: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
-    /**
-     * 5. Edit Password API - Change user password
-     */
     @PutMapping("/password")
     public ResponseEntity<AuthResponse> updatePassword(
             @RequestHeader("Authorization") String token,
             @RequestBody UpdatePasswordRequest request) {
+
         AuthResponse response = new AuthResponse();
 
         try {
@@ -173,11 +169,16 @@ public class ProfileController {
                     response.setMessage("Current password is incorrect");
                     return ResponseEntity.badRequest().body(response);
                 }
+
+                if (BCrypt.checkpw(request.getNewPassword(), user.getPassword())) {
+                    response.setSuccess(false);
+                    response.setMessage("New password cannot be the same as your current password");
+                    return ResponseEntity.badRequest().body(response);
+                }
             }
 
             String hashedPassword = BCrypt.hashpw(request.getNewPassword(), BCrypt.gensalt());
             user.setPassword(hashedPassword);
-
             userRepository.updatePassword(user.getId(), hashedPassword);
 
             response.setSuccess(true);
@@ -185,27 +186,25 @@ public class ProfileController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println("Error updating password: " + e.getMessage());
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Error updating password: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
-    /**
-     * 6. Upload Photo API - Upload and store user image
-     */
     @PostMapping("/photo")
     public ResponseEntity<AuthResponse> uploadPhoto(
             @RequestHeader("Authorization") String token,
             @RequestParam("file") MultipartFile file) {
+
         AuthResponse response = new AuthResponse();
 
         try {
             String contentType = file.getContentType();
-            if (contentType == null || (!contentType.equals("image/jpeg") &&
-                    !contentType.equals("image/jpg") && !contentType.equals("image/png"))) {
+
+            if (contentType == null || (!contentType.equals("image/jpeg")
+                    && !contentType.equals("image/jpg")
+                    && !contentType.equals("image/png"))) {
                 response.setSuccess(false);
                 response.setMessage("Only JPG and PNG images are allowed");
                 return ResponseEntity.badRequest().body(response);
@@ -226,30 +225,23 @@ public class ProfileController {
             }
 
             byte[] imageBytes = file.getBytes();
-
             userRepository.updatePhoto(user.getId(), imageBytes, contentType);
 
             response.setSuccess(true);
             response.setMessage("Photo uploaded successfully");
-
             return ResponseEntity.ok(response);
 
         } catch (IOException e) {
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Error reading file: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         } catch (Exception e) {
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Error uploading photo: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
-    /**
-     * Get user photo
-     */
     @GetMapping("/photo")
     public ResponseEntity<byte[]> getPhoto(@RequestHeader("Authorization") String token) {
         try {
@@ -260,8 +252,8 @@ public class ProfileController {
             }
 
             byte[] photoBytes = user.getProfilePhoto();
-
             String contentType = user.getPhotoContentType();
+
             if (contentType == null || contentType.isEmpty()) {
                 contentType = "image/jpeg";
             }
@@ -272,14 +264,10 @@ public class ProfileController {
                     .body(photoBytes);
 
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    /**
-     * Delete photo
-     */
     @DeleteMapping("/photo")
     public ResponseEntity<AuthResponse> deletePhoto(@RequestHeader("Authorization") String token) {
         AuthResponse response = new AuthResponse();
@@ -296,7 +284,6 @@ public class ProfileController {
             user.setProfilePhoto(null);
             user.setPhotoContentType(null);
             user.setPhotoUpdatedAt(null);
-
             userRepository.save(user);
 
             response.setSuccess(true);
@@ -304,7 +291,6 @@ public class ProfileController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Error deleting photo: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);

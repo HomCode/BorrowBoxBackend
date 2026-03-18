@@ -3,6 +3,7 @@ package com.example.BorrowBoxBackend.service;
 import com.example.BorrowBoxBackend.dto.LoginRequest;
 import com.example.BorrowBoxBackend.dto.RegisterRequest;
 import com.example.BorrowBoxBackend.dto.AuthResponse;
+import com.example.BorrowBoxBackend.model.Role;
 import com.example.BorrowBoxBackend.model.User;
 import com.example.BorrowBoxBackend.repository.UserRepository;
 import com.example.BorrowBoxBackend.security.JwtUtils;
@@ -37,19 +38,19 @@ public class AuthService {
             return response;
         }
 
-        if (userRepository.existsByUsername(request.getUsername())) {
+        if (userRepository.existsByEmail(request.getEmail())) {
             response.setSuccess(false);
-            response.setMessage("Username already exists");
+            response.setMessage("Email already exists");
             return response;
         }
 
-        if ("student".equals(request.getRole())) {
+        if ("student".equalsIgnoreCase(request.getRole())) {
             if (request.getStudentId() == null || request.getStudentId().isEmpty()) {
                 response.setSuccess(false);
                 response.setMessage("Student ID is required");
                 return response;
             }
-        } else if ("officer".equals(request.getRole())) {
+        } else if ("officer".equalsIgnoreCase(request.getRole())) {
             if (request.getOrgId() == null || request.getOrgId().isEmpty()) {
                 response.setSuccess(false);
                 response.setMessage("Organization ID is required");
@@ -62,33 +63,33 @@ public class AuthService {
         }
 
         try {
-            System.out.println("=== REGISTRATION ATTEMPT ===");
-            System.out.println("Username: " + request.getUsername());
-
             Map<String, Object> supabaseUser = supabaseAuthService.signUp(request);
-            System.out.println("✅ Supabase registration successful. User ID: " + supabaseUser.get("id"));
 
             User user = new User();
-            user.setUsername(request.getUsername());
+            user.setEmail(request.getEmail());
 
             String hashedPassword = BCrypt.hashpw(request.getPassword(), BCrypt.gensalt());
             user.setPassword(hashedPassword);
-            System.out.println("Password hashed for local storage");
 
             user.setFullName(request.getFullName());
-            user.setRole(request.getRole());
 
-            if ("student".equals(request.getRole())) {
+            if ("student".equalsIgnoreCase(request.getRole())) {
+                user.setRole(Role.STUDENT);
                 user.setStudentId(request.getStudentId());
             } else {
+                user.setRole(Role.OFFICER);
                 user.setOrgId(request.getOrgId());
             }
 
-            user.setSupabaseId((String) supabaseUser.get("id"));
+            String supabaseId = (String) supabaseUser.get("id");
+
+            if (supabaseId == null || supabaseId.isBlank()) {
+                throw new RuntimeException("Supabase ID is missing after signup.");
+            }
+
+            user.setSupabaseId(supabaseId);
 
             User savedUser = userRepository.save(user);
-            System.out.println("✅ User saved to local database with ID: " + savedUser.getId());
-
             String token = jwtUtils.generateToken(savedUser);
 
             response.setSuccess(true);
@@ -97,9 +98,9 @@ public class AuthService {
 
             AuthResponse.UserData userData = new AuthResponse.UserData(
                     savedUser.getId(),
-                    savedUser.getUsername(),
+                    savedUser.getEmail(),
                     savedUser.getFullName(),
-                    savedUser.getRole(),
+                    savedUser.getRole().name().toLowerCase(),
                     savedUser.getStudentId(),
                     savedUser.getOrgId(),
                     savedUser.getProfilePhoto() != null
@@ -109,8 +110,6 @@ public class AuthService {
             return response;
 
         } catch (Exception e) {
-            System.err.println("❌ Registration failed: " + e.getMessage());
-            e.printStackTrace();
             response.setSuccess(false);
             response.setMessage("Registration failed: " + e.getMessage());
             return response;
@@ -120,64 +119,52 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         AuthResponse response = new AuthResponse();
 
-        System.out.println("=== LOGIN ATTEMPT ===");
-        System.out.println("Username: " + request.getUsername());
-        System.out.println("Password: " + request.getPassword());
-
         try {
-            System.out.println("Attempting Supabase authentication...");
             Map<String, Object> supabaseResponse = supabaseAuthService.signIn(
-                    request.getUsername(),
+                    request.getEmail(),
                     request.getPassword()
             );
-            System.out.println("✅ Supabase authentication successful!");
-            System.out.println("Access token received: " + supabaseResponse.get("access_token"));
 
             Map<String, Object> supabaseUser = (Map<String, Object>) supabaseResponse.get("user");
             String supabaseUserId = (String) supabaseUser.get("id");
-            System.out.println("Supabase User ID: " + supabaseUserId);
 
-            Optional<User> existingUser = userRepository.findByUsername(request.getUsername());
+            Optional<User> existingUser = userRepository.findByEmail(request.getEmail());
             User user;
 
             if (existingUser.isPresent()) {
                 user = existingUser.get();
-                System.out.println("✅ User found in local database with role: " + user.getRole());
 
                 if (user.getSupabaseId() == null) {
                     user.setSupabaseId(supabaseUserId);
                     user = userRepository.save(user);
-                    System.out.println("Updated user with Supabase ID");
                 }
             } else {
-                System.out.println("⚠️ User not found in local database. Creating from Supabase data...");
-
                 user = new User();
-                user.setUsername(request.getUsername());
+                user.setEmail(request.getEmail());
                 user.setPassword("SUPABASE_MANAGED");
 
                 Map<String, Object> userMetadata = (Map<String, Object>) supabaseUser.get("user_metadata");
                 if (userMetadata != null) {
-                    user.setFullName((String) userMetadata.getOrDefault("fullName", request.getUsername()));
-                    user.setRole((String) userMetadata.getOrDefault("role", "student"));
+                    user.setFullName((String) userMetadata.getOrDefault("fullName", request.getEmail()));
 
-                    if ("student".equals(user.getRole())) {
-                        user.setStudentId((String) userMetadata.get("studentId"));
-                    } else if ("officer".equals(user.getRole())) {
+                    String roleValue = (String) userMetadata.getOrDefault("role", "student");
+                    if ("officer".equalsIgnoreCase(roleValue)) {
+                        user.setRole(Role.OFFICER);
                         user.setOrgId((String) userMetadata.get("orgId"));
+                    } else {
+                        user.setRole(Role.STUDENT);
+                        user.setStudentId((String) userMetadata.get("studentId"));
                     }
                 } else {
-                    user.setFullName(request.getUsername());
-                    user.setRole("student");
+                    user.setFullName(request.getEmail());
+                    user.setRole(Role.STUDENT);
                 }
 
                 user.setSupabaseId(supabaseUserId);
                 user = userRepository.save(user);
-                System.out.println("✅ New user created in local database with ID: " + user.getId());
             }
 
             String token = jwtUtils.generateToken(user);
-            System.out.println("✅ JWT token generated");
 
             response.setSuccess(true);
             response.setToken(token);
@@ -185,9 +172,9 @@ public class AuthService {
 
             AuthResponse.UserData userData = new AuthResponse.UserData(
                     user.getId(),
-                    user.getUsername(),
+                    user.getEmail(),
                     user.getFullName(),
-                    user.getRole(),
+                    user.getRole().name().toLowerCase(),
                     user.getStudentId(),
                     user.getOrgId(),
                     user.getProfilePhoto() != null
@@ -197,38 +184,43 @@ public class AuthService {
             return response;
 
         } catch (Exception e) {
-            System.err.println("❌ Login failed: " + e.getMessage());
-            e.printStackTrace();
+            User user = userRepository.findByEmail(request.getEmail()).orElse(null);
 
-            System.out.println("Attempting fallback to local authentication...");
-
-            User user = userRepository.findByUsername(request.getUsername()).orElse(null);
-
-            if (user != null && BCrypt.checkpw(request.getPassword(), user.getPassword())) {
-                System.out.println("✅ Local authentication successful (fallback)");
-
-                String token = jwtUtils.generateToken(user);
-
-                response.setSuccess(true);
-                response.setToken(token);
-                response.setMessage("Login successful (local)");
-
-                AuthResponse.UserData userData = new AuthResponse.UserData(
-                        user.getId(),
-                        user.getUsername(),
-                        user.getFullName(),
-                        user.getRole(),
-                        user.getStudentId(),
-                        user.getOrgId(),
-                        user.getProfilePhoto() != null
-                );
-                response.setUser(userData);
-
+            if (user == null) {
+                response.setSuccess(false);
+                response.setMessage("No account found with that email");
                 return response;
             }
 
-            response.setSuccess(false);
-            response.setMessage("Invalid credentials");
+            if ("SUPABASE_MANAGED".equals(user.getPassword())) {
+                response.setSuccess(false);
+                response.setMessage("Invalid password");
+                return response;
+            }
+
+            if (!BCrypt.checkpw(request.getPassword(), user.getPassword())) {
+                response.setSuccess(false);
+                response.setMessage("Invalid password");
+                return response;
+            }
+
+            String token = jwtUtils.generateToken(user);
+
+            response.setSuccess(true);
+            response.setToken(token);
+            response.setMessage("Login successful");
+
+            AuthResponse.UserData userData = new AuthResponse.UserData(
+                    user.getId(),
+                    user.getEmail(),
+                    user.getFullName(),
+                    user.getRole().name().toLowerCase(),
+                    user.getStudentId(),
+                    user.getOrgId(),
+                    user.getProfilePhoto() != null
+            );
+            response.setUser(userData);
+
             return response;
         }
     }
