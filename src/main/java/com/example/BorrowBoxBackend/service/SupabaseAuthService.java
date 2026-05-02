@@ -1,15 +1,20 @@
 package com.example.BorrowBoxBackend.service;
 
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
 import com.example.BorrowBoxBackend.config.SupabaseConfig;
 import com.example.BorrowBoxBackend.dto.RegisterRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.*;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 public class SupabaseAuthService {
@@ -30,6 +35,7 @@ public class SupabaseAuthService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("apikey", supabaseConfig.getAnonKey());
+        headers.setBearerAuth(supabaseConfig.getAnonKey());
 
         Map<String, Object> body = new HashMap<>();
         body.put("email", request.getEmail().trim());
@@ -102,6 +108,7 @@ public class SupabaseAuthService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("apikey", supabaseConfig.getAnonKey());
+        headers.setBearerAuth(supabaseConfig.getAnonKey());
 
         Map<String, Object> body = new HashMap<>();
         body.put("email", email.trim());
