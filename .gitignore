@@ -34,3 +34,6 @@ build/
 
 # Ignore secrets
 src/main/resources/application.properties
+
+*.class
+target/

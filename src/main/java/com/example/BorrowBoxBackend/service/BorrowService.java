@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.BorrowBoxBackend.dto.BorrowDTO;
 import com.example.BorrowBoxBackend.dto.request.BorrowRequest;
@@ -21,18 +22,38 @@ public class BorrowService {
     private final ItemRepository itemRepository;
     private final TransactionService transactionService;
 
-    public BorrowService(BorrowRepository borrowRepository, ItemRepository itemRepository, TransactionService transactionService) {
+    public BorrowService(
+            BorrowRepository borrowRepository,
+            ItemRepository itemRepository,
+            TransactionService transactionService
+    ) {
         this.borrowRepository = borrowRepository;
         this.itemRepository = itemRepository;
         this.transactionService = transactionService;
     }
 
+    @Transactional
     public BorrowDTO borrowItem(String studentId, BorrowRequest request) {
         Item item = itemRepository.findById(request.getItemId())
                 .orElseThrow(() -> new RuntimeException("Item not found"));
 
-        if (item.getAvailableQuantity() <= 0) {
+        if (item.getAvailableQuantity() == null || item.getAvailableQuantity() <= 0) {
             throw new RuntimeException("Item is not available for borrowing");
+        }
+
+        if (item.getAvailableQuantity() > item.getTotalQuantity()) {
+            item.setAvailableQuantity(item.getTotalQuantity());
+            itemRepository.save(item);
+        }
+
+        boolean alreadyBorrowed = borrowRepository.existsByStudentIdAndItemIdAndStatusIn(
+                studentId,
+                item.getId(),
+                List.of("ACTIVE", "BORROWED", "APPROVED", "PENDING")
+        );
+
+        if (alreadyBorrowed) {
+            throw new RuntimeException("You already have an active borrow for this item. Return it before borrowing again.");
         }
 
         int days = request.getDays() != null ? request.getDays() : 7;
@@ -51,17 +72,36 @@ public class BorrowService {
 
         Borrow savedBorrow = borrowRepository.save(borrow);
 
-        item.setAvailableQuantity(item.getAvailableQuantity() - 1);
+        int newAvailableQuantity = item.getAvailableQuantity() - 1;
+        item.setAvailableQuantity(Math.max(newAvailableQuantity, 0));
+
+        if (item.getAvailableQuantity() <= 0) {
+            item.setStatus("UNAVAILABLE");
+        } else {
+            item.setStatus("AVAILABLE");
+        }
+
         itemRepository.save(item);
 
-        transactionService.createTransaction(savedBorrow.getId(), studentId, item.getId(), "BORROW", "ACTIVE");
+        transactionService.createTransaction(
+                savedBorrow.getId(),
+                studentId,
+                item.getId(),
+                "BORROW",
+                "ACTIVE"
+        );
 
         return convertToDTO(savedBorrow);
     }
 
+    @Transactional
     public BorrowDTO returnItem(String borrowId, ReturnBorrowRequest request) {
         Borrow borrow = borrowRepository.findById(borrowId)
                 .orElseThrow(() -> new RuntimeException("Borrow record not found"));
+
+        if (!"ACTIVE".equalsIgnoreCase(borrow.getStatus())) {
+            throw new RuntimeException("This item has already been returned.");
+        }
 
         Item item = itemRepository.findById(borrow.getItemId())
                 .orElseThrow(() -> new RuntimeException("Item not found"));
@@ -73,7 +113,23 @@ public class BorrowService {
 
         Borrow updatedBorrow = borrowRepository.save(borrow);
 
-        item.setAvailableQuantity(item.getAvailableQuantity() + 1);
+        int currentAvailable = item.getAvailableQuantity() != null ? item.getAvailableQuantity() : 0;
+        int totalQuantity = item.getTotalQuantity() != null ? item.getTotalQuantity() : 0;
+
+        int newAvailableQuantity = currentAvailable + 1;
+
+        if (newAvailableQuantity > totalQuantity) {
+            newAvailableQuantity = totalQuantity;
+        }
+
+        item.setAvailableQuantity(newAvailableQuantity);
+
+        if (item.getAvailableQuantity() > 0) {
+            item.setStatus("AVAILABLE");
+        } else {
+            item.setStatus("UNAVAILABLE");
+        }
+
         itemRepository.save(item);
 
         transactionService.updateTransaction(
@@ -124,10 +180,16 @@ public class BorrowService {
     }
 
     private BorrowDTO convertToDTO(Borrow borrow) {
+        Item item = itemRepository.findById(borrow.getItemId())
+                .orElse(null);
+
+        String itemName = (item != null) ? item.getName() : "Unknown Item";
+
         return new BorrowDTO(
                 borrow.getId(),
                 borrow.getStudentId(),
                 borrow.getItemId(),
+                itemName,
                 borrow.getSerialNumber(),
                 borrow.getBorrowDate(),
                 borrow.getDueDate(),
