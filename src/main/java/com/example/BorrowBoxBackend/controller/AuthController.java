@@ -1,15 +1,18 @@
 package com.example.BorrowBoxBackend.controller;  // This file is in controller package
 
-import com.example.BorrowBoxBackend.dto.LoginRequest;  // ✅ Fixed import
-import com.example.BorrowBoxBackend.dto.RegisterRequest;  // ✅ Fixed import
-import com.example.BorrowBoxBackend.dto.AuthResponse;  // ✅ Fixed import
-import com.example.BorrowBoxBackend.service.AuthService;  // ✅ Fixed import
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.ResponseEntity;  // ✅ Fixed import
+import org.springframework.web.bind.annotation.PostMapping;  // ✅ Fixed import
+import org.springframework.web.bind.annotation.RequestBody;  // ✅ Fixed import
+import org.springframework.web.bind.annotation.RequestMapping;  // ✅ Fixed import
+import org.springframework.web.bind.annotation.RestController;
+
+import com.example.BorrowBoxBackend.dto.AuthResponse;
+import com.example.BorrowBoxBackend.dto.LoginRequest;
+import com.example.BorrowBoxBackend.dto.RegisterRequest;
+import com.example.BorrowBoxBackend.service.AuthService;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:3000")
 public class AuthController {
 
     private final AuthService authService;
