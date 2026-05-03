@@ -1,18 +1,28 @@
 package com.example.BorrowBoxBackend.repository;
 
-import com.example.BorrowBoxBackend.model.User;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
+import com.example.BorrowBoxBackend.model.User;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, String> {
+
     Optional<User> findByEmail(String email);
+
+    Optional<User> findByStudentId(String studentId);
+
+    Optional<User> findByOrgId(String orgId);
+
     boolean existsByEmail(String email);
+
+    @Query(value = "SELECT COUNT(*) FROM users WHERE LOWER(role) = 'student'", nativeQuery = true)
+    long countStudents();
 
     @Modifying
     @Transactional

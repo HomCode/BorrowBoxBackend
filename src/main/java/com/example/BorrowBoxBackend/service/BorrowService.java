@@ -2,6 +2,7 @@ package com.example.BorrowBoxBackend.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -12,23 +13,28 @@ import com.example.BorrowBoxBackend.dto.request.BorrowRequest;
 import com.example.BorrowBoxBackend.dto.request.ReturnBorrowRequest;
 import com.example.BorrowBoxBackend.model.Borrow;
 import com.example.BorrowBoxBackend.model.Item;
+import com.example.BorrowBoxBackend.model.User;
 import com.example.BorrowBoxBackend.repository.BorrowRepository;
 import com.example.BorrowBoxBackend.repository.ItemRepository;
+import com.example.BorrowBoxBackend.repository.UserRepository;
 
 @Service
 public class BorrowService {
 
     private final BorrowRepository borrowRepository;
     private final ItemRepository itemRepository;
+    private final UserRepository userRepository;
     private final TransactionService transactionService;
 
     public BorrowService(
             BorrowRepository borrowRepository,
             ItemRepository itemRepository,
+            UserRepository userRepository,
             TransactionService transactionService
     ) {
         this.borrowRepository = borrowRepository;
         this.itemRepository = itemRepository;
+        this.userRepository = userRepository;
         this.transactionService = transactionService;
     }
 
@@ -37,11 +43,17 @@ public class BorrowService {
         Item item = itemRepository.findById(request.getItemId())
                 .orElseThrow(() -> new RuntimeException("Item not found"));
 
+        // IMPORTANT:
+        // Soft-deleted items should not be borrowed again.
+        if ("DELETED".equalsIgnoreCase(item.getStatus())) {
+            throw new RuntimeException("This item no longer exists and cannot be borrowed.");
+        }
+
         if (item.getAvailableQuantity() == null || item.getAvailableQuantity() <= 0) {
             throw new RuntimeException("Item is not available for borrowing");
         }
 
-        if (item.getAvailableQuantity() > item.getTotalQuantity()) {
+        if (item.getTotalQuantity() != null && item.getAvailableQuantity() > item.getTotalQuantity()) {
             item.setAvailableQuantity(item.getTotalQuantity());
             itemRepository.save(item);
         }
@@ -124,10 +136,15 @@ public class BorrowService {
 
         item.setAvailableQuantity(newAvailableQuantity);
 
-        if (item.getAvailableQuantity() > 0) {
-            item.setStatus("AVAILABLE");
-        } else {
-            item.setStatus("UNAVAILABLE");
+        // IMPORTANT:
+        // If the officer already deleted/archived the item,
+        // the student can still return it, but the item should remain hidden.
+        if (!"DELETED".equalsIgnoreCase(item.getStatus())) {
+            if (item.getAvailableQuantity() > 0) {
+                item.setStatus("AVAILABLE");
+            } else {
+                item.setStatus("UNAVAILABLE");
+            }
         }
 
         itemRepository.save(item);
@@ -183,13 +200,51 @@ public class BorrowService {
         Item item = itemRepository.findById(borrow.getItemId())
                 .orElse(null);
 
-        String itemName = (item != null) ? item.getName() : "Unknown Item";
+        User student = findStudentFromBorrowId(borrow.getStudentId())
+                .orElse(null);
+
+        String itemName = item != null ? item.getName() : "Unknown Item";
+
+        String itemLocation = "Campus";
+        if (item != null && item.getLocation() != null && !item.getLocation().isBlank()) {
+            itemLocation = item.getLocation();
+        }
+
+        Boolean hasItemImage = false;
+        if (item != null && item.getItemImage() != null && item.getItemImage().length > 0) {
+            hasItemImage = true;
+        }
+
+        String studentName = borrow.getStudentId();
+        String studentEmail = "";
+        String studentIdentifier = borrow.getStudentId();
+
+        if (student != null) {
+            if (student.getFullName() != null && !student.getFullName().isBlank()) {
+                studentName = student.getFullName();
+            }
+
+            if (student.getEmail() != null && !student.getEmail().isBlank()) {
+                studentEmail = student.getEmail();
+            }
+
+            if (student.getStudentId() != null && !student.getStudentId().isBlank()) {
+                studentIdentifier = student.getStudentId();
+            } else if (student.getEmail() != null && !student.getEmail().isBlank()) {
+                studentIdentifier = student.getEmail();
+            }
+        }
 
         return new BorrowDTO(
                 borrow.getId(),
                 borrow.getStudentId(),
+                studentName,
+                studentEmail,
+                studentIdentifier,
                 borrow.getItemId(),
                 itemName,
+                itemLocation,
+                hasItemImage,
                 borrow.getSerialNumber(),
                 borrow.getBorrowDate(),
                 borrow.getDueDate(),
@@ -198,5 +253,30 @@ public class BorrowService {
                 borrow.getCondition(),
                 borrow.getNotes()
         );
+    }
+
+    private Optional<User> findStudentFromBorrowId(String storedStudentId) {
+        if (storedStudentId == null || storedStudentId.isBlank()) {
+            return Optional.empty();
+        }
+
+        Optional<User> byId = userRepository.findById(storedStudentId);
+        if (byId.isPresent()) {
+            return byId;
+        }
+
+        Optional<User> byStudentId = userRepository.findByStudentId(storedStudentId);
+        if (byStudentId.isPresent()) {
+            return byStudentId;
+        }
+
+        if (storedStudentId.contains("@")) {
+            Optional<User> byEmail = userRepository.findByEmail(storedStudentId);
+            if (byEmail.isPresent()) {
+                return byEmail;
+            }
+        }
+
+        return Optional.empty();
     }
 }
